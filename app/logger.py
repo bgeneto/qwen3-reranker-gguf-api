@@ -16,7 +16,15 @@ class AsyncJSONFileHandler(logging.Handler):
             "module": record.module,
             "lineno": record.lineno,
         }
-        asyncio.create_task(self._write(payload))
+
+        # Check if we're in an async context
+        try:
+            loop = asyncio.get_running_loop()
+            # If we have a running loop, create the task
+            asyncio.create_task(self._write(payload))
+        except RuntimeError:
+            # No running event loop, write synchronously
+            self._write_sync(payload)
 
     async def _write(self, payload: Dict[str, Any]) -> None:
         loop = asyncio.get_running_loop()
@@ -30,6 +38,15 @@ class AsyncJSONFileHandler(logging.Handler):
                 f.write(json.dumps(payload) + "\n")
 
         await loop.run_in_executor(None, write_log)
+
+    def _write_sync(self, payload: Dict[str, Any]) -> None:
+        """Synchronous version for when no event loop is running"""
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(self.filename), exist_ok=True)
+
+        # Write to file safely
+        with open(self.filename, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload) + "\n")
 
 
 def setup_logging() -> None:

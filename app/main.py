@@ -26,8 +26,24 @@ def get_llm():
     if llm is None:
         try:
             # Ensure model is available (download if necessary)
+            logger.info("Ensuring model is available...")
             model_path = ensure_model_available()
+            logger.info(f"Model path resolved to: {model_path}")
 
+            # Verify the model file exists and is readable
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(f"Model file not found at: {model_path}")
+
+            if not os.access(model_path, os.R_OK):
+                raise PermissionError(f"Cannot read model file at: {model_path}")
+
+            file_size = os.path.getsize(model_path)
+            logger.info(f"Model file size: {file_size} bytes")
+
+            if file_size == 0:
+                raise ValueError(f"Model file is empty: {model_path}")
+
+            logger.info("Initializing Llama model...")
             llm = Llama(
                 model_path=model_path,
                 n_ctx=settings.N_CTX,
@@ -37,9 +53,14 @@ def get_llm():
                 logits_all=True,
                 verbose=False,
             )
+            logger.info("Model loaded successfully!")
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
-            raise RuntimeError("Failed to load model")
+            logger.error(
+                f"Model settings: repo={settings.HF_MODEL_REPO}, filename={settings.HF_MODEL_FILENAME}"
+            )
+            logger.error(f"Expected path: {settings.model_path}")
+            raise RuntimeError(f"Failed to load model: {e}")
     return llm
 
 
@@ -121,7 +142,14 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    get_llm()  # Load the model at startup
+    """Load the model at startup"""
+    try:
+        logger.info("Starting up application...")
+        get_llm()  # Load the model at startup
+        logger.info("Application startup completed successfully")
+    except Exception as e:
+        logger.error(f"Application startup failed: {e}")
+        raise
 
 
 # public
@@ -181,11 +209,20 @@ async def rerank(
 
 
 if __name__ == "__main__":
+    try:
+        import uvloop
+
+        # Set uvloop as the default event loop policy for better performance (Linux/Unix only)
+        uvloop.install()
+        logger.info("uvloop installed for better async performance")
+    except ImportError:
+        # uvloop is not available on Windows
+        logger.info("uvloop not available, using default event loop")
+
     uvicorn.run(
         "app.main:app",
         host=settings.HOST,
         port=settings.PORT,
         reload=True,
-        loop="uvloop",
-        http="httptools",
+        # Don't specify loop and http here when using uvloop.install()
     )

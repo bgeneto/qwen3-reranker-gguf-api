@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     @property
     def model_path(self) -> str:
         """Construct the full model path from the filename"""
+        # Use /models directory in container, ./models locally
         return f"/models/{self.HF_MODEL_FILENAME}"
 
 
