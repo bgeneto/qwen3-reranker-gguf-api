@@ -53,13 +53,13 @@ The API is designed for performance and security, offloading the entire model to
     Place your GGUF model file inside the `models/` directory. The `.env` file is pre-configured for `qwen3-4b-reranker-q4_k_m.gguf`.
 
 3.  **Configure Environment:**
-    Create a `.env` file from the example below and **change the `API_TOKEN`**.
+    Rename the `.env.example` file to `.env` and customize the values, especially the `API_TOKEN`.
 
     ```bash
     # .env
     # model
     MODEL_PATH=/models/qwen3-4b-reranker-q4_k_m.gguf
-    N_CTX=8192
+    N_CTX=8192               # Max context size for the model's memory
     N_GPU_LAYERS=-1          # -1 = offload everything
     N_BATCH=512
     N_THREADS=0            # 0 = auto
@@ -76,6 +76,8 @@ The API is designed for performance and security, offloading the entire model to
     HOST=0.0.0.0
     PORT=8000
     ```
+
+    **A note on `N_CTX`**: This value defines the model's context window size (in tokens), which is its short-term memory. It must be less than or equal to the model's maximum supported context size. A larger `N_CTX` requires more VRAM/RAM.
 
 ### 3. Run the Service
 
