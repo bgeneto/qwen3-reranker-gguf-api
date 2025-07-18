@@ -16,7 +16,7 @@ RUN apt-get update && \
 
 # Install wheels
 COPY --from=builder /wheels /wheels
-RUN pip3 install --no-cache /wheels/*
+RUN pip3 install --no-cache --break-system-packages /wheels/*
 
 # Create log dir
 RUN mkdir -p /var/log && chmod 777 /var/log
