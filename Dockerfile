@@ -11,12 +11,13 @@ FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 # Python & system deps
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
-    apt-get install -y software-properties-common && \
+    apt-get install -y software-properties-common curl && \
     add-apt-repository -y ppa:deadsnakes/ppa && \
     apt-get update && \
-    apt-get install -y --no-install-recommends python3.11 python3.11-pip && \
+    apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-distutils && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s /usr/bin/python3.11 /usr/bin/python3 && \
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && \
     ln -s /usr/local/bin/pip /usr/bin/pip3
 
 # Install wheels
