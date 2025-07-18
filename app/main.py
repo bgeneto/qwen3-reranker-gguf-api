@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 llm: Optional[Llama] = None
 
+
 def get_llm():
     global llm
     if llm is None:
@@ -37,11 +38,13 @@ def get_llm():
             raise RuntimeError("Failed to load model")
     return llm
 
+
 # ------------------------------------------------------------------
 # schema
 # ------------------------------------------------------------------
 class Document(BaseModel):
     text: str
+
 
 class RerankRequest(BaseModel):
     model: str = "qwen3-reranker"
@@ -49,27 +52,31 @@ class RerankRequest(BaseModel):
     documents: List[Document]
     top_n: Optional[int] = None
 
+
 class RerankResult(BaseModel):
     index: int
     relevance_score: float
 
+
 class RerankResponse(BaseModel):
     model: str
     results: List[RerankResult]
+
 
 # ------------------------------------------------------------------
 # reranker logic
 # ------------------------------------------------------------------
 SYSTEM = (
     "Judge whether the Document meets the requirements based on the Query "
-    "and the Instruct provided. Note that the answer can only be \"yes\" or \"no\"."
+    'and the Instruct provided. Note that the answer can only be "yes" or "no".'
 )
 PROMPT_TEMPLATE = (
     "<|im_start|>system\n{system}\n<|im_start|>user\n"
     "<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {doc}\n"
     "<|im_start|>assistant\n"
 )
-INSTRUCTION = "Given a web search query, retrieve relevant passages that answer the query"
+INSTRUCTION = "Evaluate how relevant the following document is to the query for retrieving useful information to answer or provide context for the query."
+
 
 async def rerank_one(instruction: str, query: str, doc: str) -> float:
     llm_instance = get_llm()
@@ -79,19 +86,20 @@ async def rerank_one(instruction: str, query: str, doc: str) -> float:
         query=query,
         doc=doc,
     )
-    
+
     def _run_llm():
         return llm_instance(prompt, max_tokens=1, temperature=0.0)
 
     output = await asyncio.to_thread(_run_llm)
-    
+
     yes_token = llm_instance.tokenize(b"yes")[-1]
     no_token = llm_instance.tokenize(b"no")[-1]
-    
+
     yes_logit = output["choices"][0]["logits"][-1][yes_token]
-    no_logit  = output["choices"][0]["logits"][-1][no_token]
+    no_logit = output["choices"][0]["logits"][-1][no_token]
     lse = math.log(math.exp(yes_logit) + math.exp(no_logit))
     return math.exp(yes_logit - lse)
+
 
 # ------------------------------------------------------------------
 # FastAPI app
@@ -106,9 +114,11 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
+
 @app.on_event("startup")
 async def startup_event():
-    get_llm() # Load the model at startup
+    get_llm()  # Load the model at startup
+
 
 # public
 @app.get("/health")
@@ -118,9 +128,11 @@ async def health():
     else:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
+
 @app.get("/metrics")
 async def metrics():
     return metrics_endpoint()()
+
 
 # protected
 @app.post("/v1/rerank", response_model=RerankResponse)
@@ -136,26 +148,26 @@ async def rerank(
 
             tasks = [rerank_one(INSTRUCTION, req.query, d.text) for d in req.documents]
             scores = await asyncio.gather(*tasks)
-            
+
             results = [
-                RerankResult(index=i, relevance_score=s)
-                for i, s in enumerate(scores)
+                RerankResult(index=i, relevance_score=s) for i, s in enumerate(scores)
             ]
             results.sort(key=lambda x: x.relevance_score, reverse=True)
             if req.top_n:
-                results = results[:req.top_n]
+                results = results[: req.top_n]
             return RerankResponse(model=req.model, results=results)
         except Exception as e:
             FAIL_COUNT.inc()
             logger.exception("Rerank failed")
             raise HTTPException(status_code=500, detail=str(e))
 
+
 if __name__ == "__main__":
     uvicorn.run(
-        "app.main:app", 
-        host=settings.HOST, 
-        port=settings.PORT, 
-        reload=True, 
-        loop="uvloop", 
-        http="httptools"
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=True,
+        loop="uvloop",
+        http="httptools",
     )

@@ -1,10 +1,10 @@
 Below is a **production-grade** Docker Compose stack that:
 
-* Uses **CUDA-enabled llama-cpp-python** and off-loads the **entire** model to the GPU (`N_GPU_LAYERS=-1`).  
-* Reads **all** configuration from an `.env` file (model path, GPU layers, log level, etc.).  
-* Adds **async** file logging (JSON-L) that can be turned on/off with `LOG_TO_FILE`.  
-* Exposes a **metrics** endpoint (`/metrics`) with Prometheus-style counters & gauges.  
-* Protects every route (except `/health`) with **Bearer token** authentication.  
+* Uses **CUDA-enabled llama-cpp-python** and off-loads the **entire** model to the GPU (`N_GPU_LAYERS=-1`).
+* Reads **all** configuration from an `.env` file (model path, GPU layers, log level, etc.).
+* Adds **async** file logging (JSON-L) that can be turned on/off with `LOG_TO_FILE`.
+* Exposes a **metrics** endpoint (`/metrics`) with Prometheus-style counters & gauges.
+* Protects every route (except `/health`) with **Bearer token** authentication.
 
 Let's implement this code now. Correct any issues you find and apply improvements if you may.
 
@@ -272,7 +272,7 @@ async def rerank(
     _=Depends(verify_token),
 ):
     REQUEST_COUNT.inc()
-    instruction = "Given a web search query, retrieve relevant passages that answer the query"
+    instruction = "Evaluate how relevant the following document is to the query for retrieving useful information to answer or provide context for the query."
     with LATENCY.time():
         try:
             scores = [rerank_one(instruction, req.query, d.text) for d in req.documents]
