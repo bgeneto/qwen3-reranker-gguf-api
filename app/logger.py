@@ -2,10 +2,6 @@ import os, json, logging, asyncio
 from datetime import datetime
 from typing import Any, Dict
 
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-LOG_TO_FILE = os.getenv("LOG_TO_FILE", "false").lower() == "true"
-LOG_FILE = os.getenv("LOG_FILE", "/var/log/reranker.jsonl")
-
 
 class AsyncJSONFileHandler(logging.Handler):
     def __init__(self, filename: str):
@@ -37,12 +33,14 @@ class AsyncJSONFileHandler(logging.Handler):
 
 
 def setup_logging() -> None:
+    from .config import settings
+
     logger = logging.getLogger()
-    logger.setLevel(LOG_LEVEL)
+    logger.setLevel(settings.LOG_LEVEL)
     # console
     console = logging.StreamHandler()
     console.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logger.addHandler(console)
     # file
-    if LOG_TO_FILE:
-        logger.addHandler(AsyncJSONFileHandler(LOG_FILE))
+    if settings.LOG_TO_FILE:
+        logger.addHandler(AsyncJSONFileHandler(settings.LOG_FILE))

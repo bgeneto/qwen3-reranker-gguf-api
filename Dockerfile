@@ -50,7 +50,8 @@ RUN mkdir -p /srv/logs /srv && \
     chown -R appuser:appuser /srv /opt/venv
 
 # Set log file environment variable to use user-writable directory
-ENV LOG_FILE="/srv/logs/reranker.jsonl"
+ENV LOG_FILE="/srv/logs/reranker.jsonl" \
+    LOG_TO_FILE="true"
 
 WORKDIR /srv
 
