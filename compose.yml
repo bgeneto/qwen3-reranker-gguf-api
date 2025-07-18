@@ -1,7 +1,9 @@
 services:
-  reranker:
+  qwen3-reranker-gguf-api:
     build: .
-    container_name: qwen3-reranker
+    container_name: qwen3-reranker-gguf-api
+    hostname: qwen3-reranker-gguf-api
+    image: qwen3-reranker-gguf-api:latest
     restart: unless-stopped
     ports:
       - "8000:8000"
