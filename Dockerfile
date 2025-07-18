@@ -46,8 +46,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     /opt/venv/bin/pip install --no-deps /wheels/*
 
 # Create directories with proper permissions and fix venv ownership
-RUN mkdir -p /var/log /srv && \
-    chown -R appuser:appuser /var/log /srv /opt/venv
+RUN mkdir -p /srv/logs /srv && \
+    chown -R appuser:appuser /srv /opt/venv
+
+# Set log file environment variable to use user-writable directory
+ENV LOG_FILE="/srv/logs/reranker.jsonl"
 
 WORKDIR /srv
 
