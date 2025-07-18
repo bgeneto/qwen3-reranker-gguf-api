@@ -1,25 +1,18 @@
 # ---------- build ----------
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 WORKDIR /build
 COPY app/requirements.txt .
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 
 # ---------- runtime ----------
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+FROM nvidia/cuda:12.6.3-base-ubuntu24.04
 
 # Python & system deps
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
-    apt-get install -y software-properties-common curl && \
-    add-apt-repository -y ppa:deadsnakes/ppa && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-distutils && \
-    rm -rf /var/lib/apt/lists/* && \
-    rm -f /usr/bin/python3 && \
-    ln -s /usr/bin/python3.11 /usr/bin/python3 && \
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && \
-    ln -sf /usr/local/bin/pip3.11 /usr/bin/pip3
+    apt-get install -y --no-install-recommends python3 python3-pip python3-dev libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install wheels
 COPY --from=builder /wheels /wheels
