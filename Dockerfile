@@ -45,9 +45,9 @@ COPY --from=builder /wheels /wheels
 RUN --mount=type=cache,target=/root/.cache/pip \
     /opt/venv/bin/pip install --no-deps /wheels/*
 
-# Create directories with proper permissions
-RUN mkdir -p /var/log/app /srv && \
-    chown -R appuser:appuser /var/log/app /srv
+# Create directories with proper permissions and fix venv ownership
+RUN mkdir -p /var/log /srv && \
+    chown -R appuser:appuser /var/log /srv /opt/venv
 
 WORKDIR /srv
 
