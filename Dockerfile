@@ -1,28 +1,61 @@
 # ---------- build ----------
 FROM python:3.12-slim AS builder
+
+# Install build dependencies first (better caching)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        git && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /build
+
+# Copy and install Python dependencies
 COPY app/requirements.txt .
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential
-RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip wheel --wheel-dir /wheels -r requirements.txt
 
 # ---------- runtime ----------
 FROM nvidia/cuda:12.6.3-base-ubuntu24.04
 
-# Python & system deps
-ENV DEBIAN_FRONTEND=noninteractive
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Install system dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 python3-pip python3-dev libgomp1 && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        python3-venv \
+        libgomp1 \
+        tini && \
     rm -rf /var/lib/apt/lists/*
 
-# Install wheels
-COPY --from=builder /wheels /wheels
-RUN pip3 install --no-cache --break-system-packages /wheels/*
+# Create non-root user
+RUN groupadd -r appuser && \
+    useradd -r -g appuser -d /srv -s /bin/bash appuser
 
-# Create log dir
-RUN mkdir -p /var/log && chmod 777 /var/log
+# Install wheels with pip cache mount
+COPY --from=builder /wheels /wheels
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --no-deps /wheels/*
+
+# Create directories with proper permissions
+RUN mkdir -p /var/log/app /srv && \
+    chown -R appuser:appuser /var/log/app /srv
 
 WORKDIR /srv
-COPY app/ ./app/
+
+# Copy application code
+COPY --chown=appuser:appuser app/ ./app/
+
+# Switch to non-root user
+USER appuser
 
 EXPOSE 8000
+
+# Use tini as init system and run with uvloop for better performance
+ENTRYPOINT ["tini", "--"]
 CMD ["python3", "-m", "app.main"]

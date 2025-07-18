@@ -54,7 +54,6 @@ def ensure_model_available() -> str:
             repo_id=settings.HF_MODEL_REPO,
             filename=settings.HF_MODEL_FILENAME,
             local_dir=model_dir,
-            local_dir_use_symlinks=False,  # Copy file instead of symlinking
             token=settings.HF_TOKEN if settings.HF_TOKEN else None,
         )
 
