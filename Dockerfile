@@ -37,10 +37,13 @@ RUN apt-get update && \
 RUN groupadd -r appuser && \
     useradd -r -g appuser -d /srv -s /bin/bash appuser
 
-# Install wheels with pip cache mount
+# Create virtual environment and install wheels
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 COPY --from=builder /wheels /wheels
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install --no-deps /wheels/*
+    /opt/venv/bin/pip install --no-deps /wheels/*
 
 # Create directories with proper permissions
 RUN mkdir -p /var/log/app /srv && \
@@ -56,6 +59,6 @@ USER appuser
 
 EXPOSE 8000
 
-# Use tini as init system and run with uvloop for better performance
+# Use tini as init system and run with virtual environment Python
 ENTRYPOINT ["tini", "--"]
-CMD ["python3", "-m", "app.main"]
+CMD ["/opt/venv/bin/python", "-m", "app.main"]
