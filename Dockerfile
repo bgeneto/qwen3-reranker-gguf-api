@@ -16,9 +16,10 @@ RUN apt-get update && \
     apt-get update && \
     apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-distutils && \
     rm -rf /var/lib/apt/lists/* && \
+    rm -f /usr/bin/python3 && \
     ln -s /usr/bin/python3.11 /usr/bin/python3 && \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && \
-    ln -s /usr/local/bin/pip /usr/bin/pip3
+    ln -sf /usr/local/bin/pip3.11 /usr/bin/pip3
 
 # Install wheels
 COPY --from=builder /wheels /wheels
