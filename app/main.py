@@ -10,6 +10,7 @@ from .auth import verify_token
 from .metrics import REQUEST_COUNT, FAIL_COUNT, LATENCY, metrics_endpoint
 from .logger import setup_logging
 from .config import settings
+from .model_downloader import ensure_model_available, get_model_info
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -24,8 +25,11 @@ def get_llm():
     global llm
     if llm is None:
         try:
+            # Ensure model is available (download if necessary)
+            model_path = ensure_model_available()
+
             llm = Llama(
-                model_path=settings.MODEL_PATH,
+                model_path=model_path,
                 n_ctx=settings.N_CTX,
                 n_batch=settings.N_BATCH,
                 n_threads=settings.N_THREADS,
@@ -123,10 +127,24 @@ async def startup_event():
 # public
 @app.get("/health")
 async def health():
-    if get_llm() is not None:
-        return {"status": "ok"}
-    else:
-        raise HTTPException(status_code=503, detail="Model not loaded")
+    try:
+        model_info = get_model_info()
+        llm_instance = get_llm()
+
+        return {
+            "status": "ok",
+            "model": {
+                "loaded": llm_instance is not None,
+                "path": model_info["local_path"],
+                "exists_locally": model_info["exists_locally"],
+                "hf_repo": model_info["hf_repo"],
+                "hf_filename": model_info["hf_filename"],
+                "has_hf_token": model_info["has_hf_token"],
+            },
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=503, detail=f"Service unavailable: {str(e)}")
 
 
 @app.get("/metrics")
