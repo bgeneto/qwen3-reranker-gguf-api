@@ -37,6 +37,7 @@ RUN apt-get update && \
         libgomp1 \
         wget \
         curl \
+        libcurl4-openssl-dev \
         tini \
         git \
         cmake \
