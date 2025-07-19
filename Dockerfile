@@ -18,6 +18,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # ---------- runtime ----------
 FROM nvidia/cuda:12.6.3-base-ubuntu24.04
 
+# Accept build arguments for user ID and group ID
+ARG UID=1000
+ARG GID=1000
+
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -35,9 +39,9 @@ RUN apt-get update && \
         tini && \
     rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -r appuser && \
-    useradd -r -g appuser -d /srv -s /bin/bash appuser
+# Create non-root user with specified UID and GID
+RUN groupadd -g ${GID} appuser && \
+    useradd -r -u ${UID} -g appuser -d /srv -s /bin/bash appuser
 
 # Create virtual environment and install wheels
 RUN python3 -m venv /opt/venv

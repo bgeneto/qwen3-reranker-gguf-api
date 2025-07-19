@@ -25,6 +25,13 @@ def ensure_model_available() -> str:
 
     # Check if model already exists locally
     if os.path.exists(model_path):
+        # Check if we can read the existing model file
+        if not os.access(model_path, os.R_OK):
+            raise RuntimeError(
+                f"Model file exists at {model_path} but is not readable. "
+                f"This is likely a permission issue. Please ensure the file has correct permissions. "
+                f"You may need to set UID and GID in your .env file to match your host user."
+            )
         logger.info(f"Model found locally at: {model_path}")
         return model_path
 
@@ -40,7 +47,20 @@ def ensure_model_available() -> str:
 
     # Create models directory if it doesn't exist
     model_dir = os.path.dirname(model_path)
-    Path(model_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        Path(model_dir).mkdir(parents=True, exist_ok=True)
+        # Ensure we can write to the directory
+        if not os.access(model_dir, os.W_OK):
+            raise RuntimeError(
+                f"Cannot write to models directory: {model_dir}. "
+                f"This is likely a permission issue. Please ensure UID and GID in your .env file "
+                f"match your host user, and that the models directory has correct permissions."
+            )
+    except PermissionError as e:
+        raise RuntimeError(
+            f"Permission denied creating models directory: {model_dir}. "
+            f"Please ensure UID and GID in your .env file match your host user. Error: {e}"
+        )
 
     # Try to download using wget first, then curl
     success = False
@@ -83,6 +103,13 @@ def ensure_model_available() -> str:
     if file_size == 0:
         os.remove(model_path)  # Remove empty file
         raise RuntimeError(f"Downloaded model file is empty")
+    
+    # Ensure the downloaded file has correct permissions (readable by owner and group)
+    try:
+        os.chmod(model_path, 0o644)
+        logger.info(f"Set permissions on downloaded model file: {model_path}")
+    except Exception as e:
+        logger.warning(f"Could not set permissions on model file: {e}")
     
     logger.info(f"Model successfully downloaded to: {model_path} (size: {file_size} bytes)")
     return model_path

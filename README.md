@@ -63,7 +63,7 @@ The API is designed for performance and security, offloading the entire model to
     ```
 
 3.  **Configure Environment:**
-    Rename the `.env.example` file to `.env` and customize the values, especially the `API_TOKEN`.
+    Rename the `example.env` file to `.env` and customize the values:
 
     ```bash
     # .env
@@ -89,6 +89,17 @@ The API is designed for performance and security, offloading the entire model to
     # server
     HOST=0.0.0.0
     PORT=8000
+
+    # user permissions (for Docker volume mounts)
+    # Set these to match your host user to avoid permission issues
+    # On Linux: UID=$(id -u) GID=$(id -g)
+    UID=1000
+    GID=1000
+    ```
+
+    **Important**: Set `UID` and `GID` to match your host user to avoid file permission issues with Docker volume mounts. On Linux, you can get these values by running:
+    ```bash
+    ./get-uid-gid.sh
     ```
 
     **A note on `N_CTX`**: This value defines the model's context window size (in tokens), which is its short-term memory. It must be less than or equal to the model's maximum supported context size. A larger `N_CTX` requires more VRAM/RAM.
