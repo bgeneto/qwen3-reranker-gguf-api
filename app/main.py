@@ -44,22 +44,103 @@ def get_llm():
                 raise ValueError(f"Model file is empty: {model_path}")
 
             logger.info("Initializing Llama model...")
-            llm = Llama(
-                model_path=model_path,
-                n_ctx=settings.N_CTX,
-                n_batch=settings.N_BATCH,
-                n_threads=settings.N_THREADS,
-                n_gpu_layers=settings.N_GPU_LAYERS,
-                logits_all=True,
-                verbose=False,
-            )
-            logger.info("Model loaded successfully!")
+
+            # Add more detailed logging for debugging
+            logger.info(f"Model initialization parameters:")
+            logger.info(f"  - model_path: {model_path}")
+            logger.info(f"  - n_ctx: {settings.N_CTX}")
+            logger.info(f"  - n_batch: {settings.N_BATCH}")
+            logger.info(f"  - n_threads: {settings.N_THREADS}")
+            logger.info(f"  - n_gpu_layers: {settings.N_GPU_LAYERS}")
+
+            # Try to load the model with different configurations if needed
+            load_attempts = [
+                # First attempt: use configured settings
+                {
+                    "n_gpu_layers": settings.N_GPU_LAYERS,
+                    "n_ctx": settings.N_CTX,
+                    "n_batch": settings.N_BATCH,
+                    "n_threads": settings.N_THREADS,
+                    "logits_all": True,
+                    "verbose": False,
+                },
+                # Second attempt: force CPU-only with smaller context
+                {
+                    "n_gpu_layers": 0,
+                    "n_ctx": min(settings.N_CTX, 4096),
+                    "n_batch": min(settings.N_BATCH, 256),
+                    "n_threads": settings.N_THREADS,
+                    "logits_all": True,
+                    "verbose": True,  # Enable verbose for debugging
+                },
+                # Third attempt: minimal configuration with high compatibility
+                {
+                    "n_gpu_layers": 0,
+                    "n_ctx": 2048,
+                    "n_batch": 128,
+                    "n_threads": 1,
+                    "logits_all": True,
+                    "verbose": True,
+                    "use_mmap": False,  # Disable memory mapping
+                    "use_mlock": False,  # Disable memory locking
+                },
+                # Fourth attempt: ultra-conservative settings
+                {
+                    "n_gpu_layers": 0,
+                    "n_ctx": 512,
+                    "n_batch": 32,
+                    "n_threads": 1,
+                    "logits_all": True,
+                    "verbose": True,
+                    "use_mmap": False,
+                    "use_mlock": False,
+                    "f16_kv": False,  # Use f32 for key-value cache
+                },
+            ]
+
+            last_error = None
+            for i, config in enumerate(load_attempts):
+                try:
+                    if i > 0:
+                        logger.info(
+                            f"Attempting model load with fallback configuration {i}: {config}"
+                        )
+
+                    llm = Llama(model_path=model_path, **config)
+                    logger.info(
+                        f"Model loaded successfully with configuration: {config}"
+                    )
+                    break
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"Model load attempt {i+1} failed: {e}")
+                    if i == len(load_attempts) - 1:
+                        # This was the last attempt
+                        raise e
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
+            logger.error(f"Error type: {type(e).__name__}")
             logger.error(
                 f"Model settings: filename={settings.MODEL_FILENAME}, link={settings.MODEL_LINK}"
             )
             logger.error(f"Expected path: {settings.model_path}")
+
+            # Additional diagnostic information
+            try:
+                from .model_downloader import verify_gguf_file, calculate_file_hash
+
+                if os.path.exists(model_path):
+                    logger.error(f"File exists: True")
+                    logger.error(f"File size: {os.path.getsize(model_path)} bytes")
+                    logger.error(f"File readable: {os.access(model_path, os.R_OK)}")
+                    logger.error(f"Is valid GGUF: {verify_gguf_file(model_path)}")
+                    file_hash = calculate_file_hash(model_path)
+                    logger.error(f"File hash (SHA256): {file_hash[:32]}...")
+                else:
+                    logger.error(f"File exists: False")
+            except Exception as diag_error:
+                logger.error(f"Error during diagnostics: {diag_error}")
+
             raise RuntimeError(f"Failed to load model: {e}")
     return llm
 
@@ -222,6 +303,6 @@ if __name__ == "__main__":
         "app.main:app",
         host=settings.HOST,
         port=settings.PORT,
-        reload=True,
+        reload=False,
         # Don't specify loop and http here when using uvloop.install()
     )

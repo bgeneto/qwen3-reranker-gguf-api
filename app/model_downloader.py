@@ -2,12 +2,66 @@ import os
 import logging
 import subprocess
 import shutil
+import hashlib
 from pathlib import Path
 from typing import Optional
 
 from .config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def verify_gguf_file(file_path: str) -> bool:
+    """
+    Verify that a file is a valid GGUF file by checking its magic bytes and basic structure.
+
+    Returns:
+        bool: True if file appears to be a valid GGUF file
+    """
+    try:
+        with open(file_path, "rb") as f:
+            # Read first 4 bytes to check GGUF magic
+            magic = f.read(4)
+            # GGUF files start with 'GGUF' magic bytes
+            if magic == b"GGUF":
+                logger.info(f"File {file_path} has valid GGUF magic bytes")
+
+                # Read version (4 bytes, little endian)
+                version_bytes = f.read(4)
+                if len(version_bytes) == 4:
+                    version = int.from_bytes(version_bytes, byteorder="little")
+                    logger.info(f"GGUF version: {version}")
+
+                    # Basic version check - GGUF versions should be reasonable
+                    if version > 0 and version < 10:
+                        return True
+                    else:
+                        logger.warning(f"Unusual GGUF version: {version}")
+                        return False
+                else:
+                    logger.error(f"Could not read GGUF version bytes")
+                    return False
+            else:
+                logger.error(
+                    f"File {file_path} does not have GGUF magic bytes. Found: {magic}"
+                )
+                return False
+    except Exception as e:
+        logger.error(f"Error verifying GGUF file {file_path}: {e}")
+        return False
+
+
+def calculate_file_hash(file_path: str, chunk_size: int = 8192) -> str:
+    """Calculate SHA256 hash of a file."""
+    sha256_hash = hashlib.sha256()
+    try:
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(chunk_size), b""):
+                sha256_hash.update(chunk)
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        logger.error(f"Error calculating hash for {file_path}: {e}")
+        return ""
 
 
 def ensure_model_available() -> str:
@@ -32,8 +86,23 @@ def ensure_model_available() -> str:
                 f"This is likely a permission issue. Please ensure the file has correct permissions. "
                 f"You may need to set UID and GID in your .env file to match your host user."
             )
-        logger.info(f"Model found locally at: {model_path}")
-        return model_path
+
+        # Verify the existing file is a valid GGUF file
+        if not verify_gguf_file(model_path):
+            logger.warning(
+                f"Existing model file {model_path} appears to be corrupted or invalid, will re-download"
+            )
+            try:
+                os.remove(model_path)
+                logger.info(f"Removed corrupted model file: {model_path}")
+            except Exception as e:
+                logger.error(f"Failed to remove corrupted model file: {e}")
+                raise RuntimeError(
+                    f"Model file is corrupted and cannot be removed: {model_path}"
+                )
+        else:
+            logger.info(f"Model found locally at: {model_path}")
+            return model_path
 
     # If no MODEL_LINK provided, we can't download
     if not settings.MODEL_LINK:
@@ -64,7 +133,7 @@ def ensure_model_available() -> str:
 
     # Try to download using wget first, then curl
     success = False
-    
+
     # Try wget
     if shutil.which("wget"):
         try:
@@ -75,7 +144,7 @@ def ensure_model_available() -> str:
             logger.info("Model successfully downloaded using wget")
         except subprocess.CalledProcessError as e:
             logger.warning(f"wget failed: {e.stderr}")
-    
+
     # Try curl if wget failed or isn't available
     if not success and shutil.which("curl"):
         try:
@@ -86,7 +155,7 @@ def ensure_model_available() -> str:
             logger.info("Model successfully downloaded using curl")
         except subprocess.CalledProcessError as e:
             logger.warning(f"curl failed: {e.stderr}")
-    
+
     if not success:
         error_msg = (
             f"Failed to download model from {settings.MODEL_LINK}. "
@@ -97,21 +166,39 @@ def ensure_model_available() -> str:
 
     # Verify the downloaded file exists and is not empty
     if not os.path.exists(model_path):
-        raise RuntimeError(f"Download completed but model file not found at: {model_path}")
-    
+        raise RuntimeError(
+            f"Download completed but model file not found at: {model_path}"
+        )
+
     file_size = os.path.getsize(model_path)
     if file_size == 0:
         os.remove(model_path)  # Remove empty file
         raise RuntimeError(f"Downloaded model file is empty")
-    
+
+    # Verify the downloaded file is a valid GGUF file
+    if not verify_gguf_file(model_path):
+        logger.error(f"Downloaded file {model_path} is not a valid GGUF file")
+        # Calculate hash for debugging
+        file_hash = calculate_file_hash(model_path)
+        logger.error(f"File hash (SHA256): {file_hash}")
+        try:
+            os.remove(model_path)  # Remove invalid file
+        except Exception as e:
+            logger.error(f"Failed to remove invalid file: {e}")
+        raise RuntimeError(f"Downloaded file is not a valid GGUF format")
+
     # Ensure the downloaded file has correct permissions (readable by owner and group)
     try:
         os.chmod(model_path, 0o644)
         logger.info(f"Set permissions on downloaded model file: {model_path}")
     except Exception as e:
         logger.warning(f"Could not set permissions on model file: {e}")
-    
-    logger.info(f"Model successfully downloaded to: {model_path} (size: {file_size} bytes)")
+
+    # Calculate and log file hash for verification
+    file_hash = calculate_file_hash(model_path)
+    logger.info(
+        f"Model successfully downloaded to: {model_path} (size: {file_size} bytes, SHA256: {file_hash[:16]}...)"
+    )
     return model_path
 
 

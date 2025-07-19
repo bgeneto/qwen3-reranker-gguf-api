@@ -1,4 +1,4 @@
-llama-cpp-python[server]==0.2.77
+llama-cpp-python[server]==0.3.14
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 python-dotenv==1.0.1
