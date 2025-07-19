@@ -40,22 +40,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with specified UID and GID
-RUN if ! getent group ${GID} >/dev/null 2>&1; then \
-        groupadd -g ${GID} appuser; \
-    else \
-        GROUP_NAME=$(getent group ${GID} | cut -d: -f1); \
-        echo "Group with GID ${GID} already exists: $GROUP_NAME"; \
-    fi && \
-    if ! id -u ${UID} >/dev/null 2>&1; then \
-        if getent group ${GID} >/dev/null 2>&1; then \
-            GROUP_NAME=$(getent group ${GID} | cut -d: -f1); \
-            useradd -r -u ${UID} -g $GROUP_NAME -d /srv -s /bin/bash appuser; \
-        else \
-            useradd -r -u ${UID} -g appuser -d /srv -s /bin/bash appuser; \
-        fi; \
-    else \
-        echo "User with UID ${UID} already exists"; \
-    fi
+RUN groupadd -f -g ${GID} appuser && \
+    useradd -o -r -u ${UID} -g ${GID} -d /srv -s /bin/bash appuser 2>/dev/null || \
+    echo "User/group with UID ${UID}/GID ${GID} already exists, continuing..."
 
 # Create virtual environment and install wheels
 RUN python3 -m venv /opt/venv
@@ -67,7 +54,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Create directories with proper permissions and fix venv ownership
 RUN mkdir -p /srv/logs /models /srv && \
-    chown -R appuser:appuser /srv /models /opt/venv
+    chown -R ${UID}:${GID} /srv /models /opt/venv
 
 # Set log file environment variable to use user-writable directory
 ENV LOG_FILE="/srv/logs/reranker.jsonl" \
@@ -76,7 +63,7 @@ ENV LOG_FILE="/srv/logs/reranker.jsonl" \
 WORKDIR /srv
 
 # Copy application code
-COPY --chown=appuser:appuser app/ ./app/
+COPY --chown=${UID}:${GID} app/ ./app/
 
 # Switch to non-root user
 USER appuser
