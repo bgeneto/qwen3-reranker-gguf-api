@@ -35,8 +35,6 @@ RUN apt-get update && \
         python3-pip \
         python3-venv \
         libgomp1 \
-        libcublas12 \
-        libcudnn8 \
         wget \
         curl \
         tini \
