@@ -57,7 +57,7 @@ def get_llm():
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             logger.error(
-                f"Model settings: repo={settings.HF_MODEL_REPO}, filename={settings.HF_MODEL_FILENAME}"
+                f"Model settings: filename={settings.MODEL_FILENAME}, link={settings.MODEL_LINK}"
             )
             logger.error(f"Expected path: {settings.model_path}")
             raise RuntimeError(f"Failed to load model: {e}")
@@ -165,9 +165,8 @@ async def health():
                 "loaded": llm_instance is not None,
                 "path": model_info["local_path"],
                 "exists_locally": model_info["exists_locally"],
-                "hf_repo": model_info["hf_repo"],
-                "hf_filename": model_info["hf_filename"],
-                "has_hf_token": model_info["has_hf_token"],
+                "model_filename": model_info["model_filename"],
+                "model_link": model_info["model_link"],
             },
         }
     except Exception as e:

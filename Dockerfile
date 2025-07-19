@@ -30,6 +30,8 @@ RUN apt-get update && \
         python3-pip \
         python3-venv \
         libgomp1 \
+        wget \
+        curl \
         tini && \
     rm -rf /var/lib/apt/lists/*
 
@@ -51,8 +53,7 @@ RUN mkdir -p /srv/logs /models /srv && \
 
 # Set log file environment variable to use user-writable directory
 ENV LOG_FILE="/srv/logs/reranker.jsonl" \
-    LOG_TO_FILE="true" \
-    HF_TOKEN=""
+    LOG_TO_FILE="true"
 
 WORKDIR /srv
 

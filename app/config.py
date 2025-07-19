@@ -5,9 +5,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # Model
-    HF_MODEL_REPO: str = "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"  # Default repo
-    HF_MODEL_FILENAME: str = "qwen3-4b-reranker-q4_k_m.gguf"  # Default filename
-    HF_TOKEN: str = ""  # Hugging Face token for private repos
+    MODEL_FILENAME: str = "Qwen3-Reranker-4B-q4_k_m.gguf"  # Default filename
+    MODEL_LINK: str = ""  # Direct download URL for the model
     N_CTX: int = 8192
     N_GPU_LAYERS: int = -1
     N_BATCH: int = 512
@@ -29,7 +28,7 @@ class Settings(BaseSettings):
     def model_path(self) -> str:
         """Construct the full model path from the filename"""
         # Use /models directory in container, ./models locally
-        return f"/models/{self.HF_MODEL_FILENAME}"
+        return f"/models/{self.MODEL_FILENAME}"
 
 
 settings = Settings()
