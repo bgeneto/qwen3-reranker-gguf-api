@@ -53,27 +53,31 @@ def get_llm():
             logger.info(f"  - n_threads: {settings.N_THREADS}")
             logger.info(f"  - n_gpu_layers: {settings.N_GPU_LAYERS}")
 
-            # Try to load the model with different configurations if needed
+            # Try to load the model with different configurations for reranking
             load_attempts = [
-                # First attempt: use configured settings
+                # First attempt: proper reranking configuration
                 {
                     "n_gpu_layers": settings.N_GPU_LAYERS,
                     "n_ctx": settings.N_CTX,
                     "n_batch": settings.N_BATCH,
                     "n_threads": settings.N_THREADS,
-                    "logits_all": True,
-                    "verbose": False,
+                    "embedding": True,  # Enable embedding mode for reranking
+                    "pooling_type": 4,  # LLAMA_POOLING_TYPE_RANK
+                    "logits_all": False,  # Not needed for reranking
+                    "verbose": True,
                 },
-                # Second attempt: force CPU-only with smaller context
+                # Second attempt: CPU-only reranking
                 {
                     "n_gpu_layers": 0,
                     "n_ctx": min(settings.N_CTX, 4096),
                     "n_batch": min(settings.N_BATCH, 256),
                     "n_threads": settings.N_THREADS,
-                    "logits_all": True,
-                    "verbose": True,  # Enable verbose for debugging
+                    "embedding": True,
+                    "pooling_type": 4,
+                    "logits_all": False,
+                    "verbose": True,
                 },
-                # Third attempt: minimal configuration with high compatibility
+                # Third attempt: fallback to legacy reranking with logits_all
                 {
                     "n_gpu_layers": 0,
                     "n_ctx": 2048,
@@ -81,8 +85,8 @@ def get_llm():
                     "n_threads": 1,
                     "logits_all": True,
                     "verbose": True,
-                    "use_mmap": False,  # Disable memory mapping
-                    "use_mlock": False,  # Disable memory locking
+                    "use_mmap": False,
+                    "use_mlock": False,
                 },
                 # Fourth attempt: ultra-conservative settings
                 {
@@ -94,7 +98,7 @@ def get_llm():
                     "verbose": True,
                     "use_mmap": False,
                     "use_mlock": False,
-                    "f16_kv": False,  # Use f32 for key-value cache
+                    "f16_kv": False,
                 },
             ]
 
@@ -184,7 +188,45 @@ PROMPT_TEMPLATE = (
 INSTRUCTION = "Evaluate how relevant the following document is to the query for retrieving useful information to answer or provide context for the query."
 
 
-async def rerank_one(instruction: str, query: str, doc: str) -> float:
+async def rerank_one_modern(instruction: str, query: str, doc: str) -> float:
+    """Modern reranking using embedding/pooling approach for newer models."""
+    llm_instance = get_llm()
+    prompt = PROMPT_TEMPLATE.format(
+        system=SYSTEM,
+        instruction=instruction,
+        query=query,
+        doc=doc,
+    )
+
+    def _run_embedding():
+        # Use embedding mode which should work with pooling_type=4 (RANK)
+        embedding_result = llm_instance.create_embedding(prompt)
+        # For reranking models, the embedding should contain the relevance score
+        return embedding_result
+
+    try:
+        result = await asyncio.to_thread(_run_embedding)
+        # Extract the relevance score from the embedding result
+        # The exact format may vary, but typically it's a single value for reranking
+        if "data" in result and len(result["data"]) > 0:
+            embedding = result["data"][0]["embedding"]
+            # For reranking models, the first component often represents the relevance score
+            # We may need to apply sigmoid or softmax to normalize it to [0,1] range
+            if len(embedding) > 0:
+                score = embedding[0]
+                # Apply sigmoid to map to [0,1] range
+                return 1.0 / (1.0 + math.exp(-score))
+            else:
+                return 0.0
+        else:
+            return 0.0
+    except Exception as e:
+        logger.warning(f"Modern reranking failed: {e}, falling back to legacy method")
+        return await rerank_one_legacy(instruction, query, doc)
+
+
+async def rerank_one_legacy(instruction: str, query: str, doc: str) -> float:
+    """Legacy reranking using logits approach for compatibility."""
     llm_instance = get_llm()
     prompt = PROMPT_TEMPLATE.format(
         system=SYSTEM,
@@ -196,15 +238,45 @@ async def rerank_one(instruction: str, query: str, doc: str) -> float:
     def _run_llm():
         return llm_instance(prompt, max_tokens=1, temperature=0.0)
 
-    output = await asyncio.to_thread(_run_llm)
+    try:
+        output = await asyncio.to_thread(_run_llm)
 
-    yes_token = llm_instance.tokenize(b"yes")[-1]
-    no_token = llm_instance.tokenize(b"no")[-1]
+        yes_token = llm_instance.tokenize(b"yes")[-1]
+        no_token = llm_instance.tokenize(b"no")[-1]
 
-    yes_logit = output["choices"][0]["logits"][-1][yes_token]
-    no_logit = output["choices"][0]["logits"][-1][no_token]
-    lse = math.log(math.exp(yes_logit) + math.exp(no_logit))
-    return math.exp(yes_logit - lse)
+        yes_logit = output["choices"][0]["logits"][-1][yes_token]
+        no_logit = output["choices"][0]["logits"][-1][no_token]
+        lse = math.log(math.exp(yes_logit) + math.exp(no_logit))
+        return math.exp(yes_logit - lse)
+    except Exception as e:
+        logger.error(f"Legacy reranking failed: {e}")
+        raise
+
+
+async def rerank_one(instruction: str, query: str, doc: str) -> float:
+    """Adaptive reranking that chooses method based on RERANKING_MODE setting."""
+    if settings.RERANKING_MODE == "modern":
+        return await rerank_one_modern(instruction, query, doc)
+    elif settings.RERANKING_MODE == "legacy":
+        return await rerank_one_legacy(instruction, query, doc)
+    else:  # auto mode
+        global llm
+        if llm is None:
+            llm = get_llm()
+
+        # Check if the model was loaded with embedding mode (indicating modern reranking support)
+        try:
+            # Try to access the model's embedding property or pooling type
+            if hasattr(llm, "_model") and hasattr(llm._model, "pooling_type"):
+                if llm._model.pooling_type == 4:  # LLAMA_POOLING_TYPE_RANK
+                    logger.info("Using modern reranking (pooling-based)")
+                    return await rerank_one_modern(instruction, query, doc)
+        except Exception as e:
+            logger.debug(f"Modern reranking check failed: {e}")
+
+        # Fall back to legacy method
+        logger.info("Using legacy reranking (logits-based)")
+        return await rerank_one_legacy(instruction, query, doc)
 
 
 # ------------------------------------------------------------------

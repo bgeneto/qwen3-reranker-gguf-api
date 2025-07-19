@@ -1,4 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Literal
+import llama_cpp
 
 
 class Settings(BaseSettings):
@@ -11,6 +13,13 @@ class Settings(BaseSettings):
     N_GPU_LAYERS: int = -1
     N_BATCH: int = 512
     N_THREADS: int = 0
+
+    # Reranking specific settings
+    POOLING_TYPE: int = 4  # LLAMA_POOLING_TYPE_RANK for reranking models
+    EMBEDDING_MODE: bool = True  # Enable embedding mode for reranking
+    RERANKING_MODE: Literal["auto", "modern", "legacy"] = (
+        "auto"  # Choose reranking approach
+    )
 
     # Logging
     LOG_LEVEL: str = "INFO"
