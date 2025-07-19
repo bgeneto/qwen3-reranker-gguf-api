@@ -40,8 +40,22 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with specified UID and GID
-RUN groupadd -g ${GID} appuser && \
-    useradd -r -u ${UID} -g appuser -d /srv -s /bin/bash appuser
+RUN if ! getent group ${GID} >/dev/null 2>&1; then \
+        groupadd -g ${GID} appuser; \
+    else \
+        GROUP_NAME=$(getent group ${GID} | cut -d: -f1); \
+        echo "Group with GID ${GID} already exists: $GROUP_NAME"; \
+    fi && \
+    if ! id -u ${UID} >/dev/null 2>&1; then \
+        if getent group ${GID} >/dev/null 2>&1; then \
+            GROUP_NAME=$(getent group ${GID} | cut -d: -f1); \
+            useradd -r -u ${UID} -g $GROUP_NAME -d /srv -s /bin/bash appuser; \
+        else \
+            useradd -r -u ${UID} -g appuser -d /srv -s /bin/bash appuser; \
+        fi; \
+    else \
+        echo "User with UID ${UID} already exists"; \
+    fi
 
 # Create virtual environment and install wheels
 RUN python3 -m venv /opt/venv
