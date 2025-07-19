@@ -5,36 +5,16 @@ FROM python:3.12-slim AS builder
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
-        git \
-        cmake \
-        ninja-build \
-        pkg-config && \
+        git && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-
-# Clone and build llama.cpp with PR #14029 patch
-RUN git clone https://github.com/ggml-org/llama.cpp.git /build/llama.cpp && \
-    cd /build/llama.cpp && \
-    git fetch origin pull/14029/head:pr-14029 && \
-    git checkout pr-14029 && \
-    cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build --config Release -j$(nproc)
-
-# Set environment variables for llama-cpp-python to use our custom build
-ENV LLAMA_CPP_LIB=/build/llama.cpp/build/src/libllama.so
-ENV CMAKE_ARGS="-DGGML_CUDA=ON"
-ENV FORCE_CMAKE=1
 
 # Copy and install Python dependencies (excluding llama-cpp-python for now)
 COPY app/requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     grep -v "llama-cpp-python" requirements.txt > requirements_base.txt && \
     pip wheel --wheel-dir /wheels -r requirements_base.txt
-
-# Build llama-cpp-python from source with our custom llama.cpp
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip wheel --wheel-dir /wheels llama-cpp-python --no-binary=llama-cpp-python
 
 # ---------- runtime ----------
 FROM nvidia/cuda:12.6.3-devel-ubuntu24.04
@@ -48,7 +28,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Install system dependencies
+# Install system dependencies including CUDA development tools
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         python3 \
@@ -59,7 +39,12 @@ RUN apt-get update && \
         libcudnn8 \
         wget \
         curl \
-        tini && \
+        tini \
+        git \
+        cmake \
+        ninja-build \
+        pkg-config \
+        build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with specified UID and GID
@@ -74,6 +59,26 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --from=builder /wheels /wheels
 RUN --mount=type=cache,target=/root/.cache/pip \
     /opt/venv/bin/pip install --no-deps /wheels/*
+
+# Clone and build llama.cpp with PR #14029 patch (requires CUDA development environment)
+RUN git clone https://github.com/ggml-org/llama.cpp.git /opt/llama.cpp && \
+    cd /opt/llama.cpp && \
+    git fetch origin pull/14029/head:pr-14029 && \
+    git checkout pr-14029 && \
+    cmake -B build \
+        -DGGML_CUDA=ON \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc && \
+    cmake --build build --config Release -j$(nproc)
+
+# Set environment variables for llama-cpp-python to use our custom build
+ENV LLAMA_CPP_LIB=/opt/llama.cpp/build/src/libllama.so
+ENV CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc"
+ENV FORCE_CMAKE=1
+
+# Now build and install llama-cpp-python from source with our custom llama.cpp
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /opt/venv/bin/pip install llama-cpp-python --no-binary=llama-cpp-python
 
 # Create directories with proper permissions and fix venv ownership
 RUN mkdir -p /srv/logs /models /srv && \

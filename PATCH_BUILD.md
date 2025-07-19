@@ -39,11 +39,12 @@ The patch adds a fallback mechanism that allows RANK pooling to work even when t
 ### What Gets Built
 
 The build process:
-1. Clones llama.cpp repository
-2. Checks out PR #14029 branch
-3. Builds llama.cpp with CUDA support
-4. Builds llama-cpp-python from source using the patched llama.cpp
-5. Creates the final Docker image
+1. Builds base Python dependencies in a slim Python image
+2. Switches to NVIDIA CUDA development image with full CUDA toolkit
+3. Clones llama.cpp repository and checks out PR #14029 branch
+4. Builds llama.cpp with CUDA support using the CUDA development environment
+5. Builds llama-cpp-python from source using the patched llama.cpp
+6. Creates the final Docker image with all components
 
 ### Configuration
 
