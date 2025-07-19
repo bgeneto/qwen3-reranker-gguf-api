@@ -55,29 +55,51 @@ def get_llm():
 
             # Try to load the model with different configurations for reranking
             load_attempts = [
-                # First attempt: proper reranking configuration
+                # First attempt: proper reranking configuration with RANK pooling
                 {
                     "n_gpu_layers": settings.N_GPU_LAYERS,
                     "n_ctx": settings.N_CTX,
                     "n_batch": settings.N_BATCH,
                     "n_threads": settings.N_THREADS,
                     "embedding": True,  # Enable embedding mode for reranking
-                    "pooling_type": 4,  # LLAMA_POOLING_TYPE_RANK
+                    "pooling_type": 4,  # LLAMA_POOLING_TYPE_RANK (with PR #14029 fallback)
                     "logits_all": False,  # Not needed for reranking
                     "verbose": True,
                 },
-                # Second attempt: CPU-only reranking
+                # Second attempt: try CLS pooling instead of RANK
+                {
+                    "n_gpu_layers": settings.N_GPU_LAYERS,
+                    "n_ctx": settings.N_CTX,
+                    "n_batch": settings.N_BATCH,
+                    "n_threads": settings.N_THREADS,
+                    "embedding": True,
+                    "pooling_type": 1,  # LLAMA_POOLING_TYPE_CLS
+                    "logits_all": False,
+                    "verbose": True,
+                },
+                # Third attempt: CPU-only reranking with RANK pooling
                 {
                     "n_gpu_layers": 0,
                     "n_ctx": min(settings.N_CTX, 4096),
                     "n_batch": min(settings.N_BATCH, 256),
                     "n_threads": settings.N_THREADS,
                     "embedding": True,
-                    "pooling_type": 4,
+                    "pooling_type": 4,  # LLAMA_POOLING_TYPE_RANK
                     "logits_all": False,
                     "verbose": True,
                 },
-                # Third attempt: fallback to legacy reranking with logits_all
+                # Fourth attempt: CPU-only with CLS pooling
+                {
+                    "n_gpu_layers": 0,
+                    "n_ctx": min(settings.N_CTX, 4096),
+                    "n_batch": min(settings.N_BATCH, 256),
+                    "n_threads": settings.N_THREADS,
+                    "embedding": True,
+                    "pooling_type": 1,  # LLAMA_POOLING_TYPE_CLS
+                    "logits_all": False,
+                    "verbose": True,
+                },
+                # Fifth attempt: fallback to legacy reranking with logits_all
                 {
                     "n_gpu_layers": 0,
                     "n_ctx": 2048,
@@ -88,7 +110,7 @@ def get_llm():
                     "use_mmap": False,
                     "use_mlock": False,
                 },
-                # Fourth attempt: ultra-conservative settings
+                # Sixth attempt: ultra-conservative settings
                 {
                     "n_gpu_layers": 0,
                     "n_ctx": 512,

@@ -5,18 +5,39 @@ FROM python:3.12-slim AS builder
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
-        git && \
+        git \
+        cmake \
+        ninja-build \
+        pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
-# Copy and install Python dependencies
+# Clone and build llama.cpp with PR #14029 patch
+RUN git clone https://github.com/ggml-org/llama.cpp.git /build/llama.cpp && \
+    cd /build/llama.cpp && \
+    git fetch origin pull/14029/head:pr-14029 && \
+    git checkout pr-14029 && \
+    cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build --config Release -j$(nproc)
+
+# Set environment variables for llama-cpp-python to use our custom build
+ENV LLAMA_CPP_LIB=/build/llama.cpp/build/src/libllama.so
+ENV CMAKE_ARGS="-DGGML_CUDA=ON"
+ENV FORCE_CMAKE=1
+
+# Copy and install Python dependencies (excluding llama-cpp-python for now)
 COPY app/requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip wheel --wheel-dir /wheels -r requirements.txt
+    grep -v "llama-cpp-python" requirements.txt > requirements_base.txt && \
+    pip wheel --wheel-dir /wheels -r requirements_base.txt
+
+# Build llama-cpp-python from source with our custom llama.cpp
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip wheel --wheel-dir /wheels llama-cpp-python --no-binary=llama-cpp-python
 
 # ---------- runtime ----------
-FROM nvidia/cuda:12.6.3-base-ubuntu24.04
+FROM nvidia/cuda:12.6.3-devel-ubuntu24.04
 
 # Accept build arguments for user ID and group ID
 ARG UID=1000
@@ -34,6 +55,8 @@ RUN apt-get update && \
         python3-pip \
         python3-venv \
         libgomp1 \
+        libcublas12 \
+        libcudnn8 \
         wget \
         curl \
         tini && \
