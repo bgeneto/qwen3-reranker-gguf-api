@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip wheel --wheel-dir /wheels -r requirements_base.txt
 
 # ---------- runtime ----------
-FROM nvidia/cuda:12.6.3-devel-ubuntu24.04
+FROM nvidia/cuda:12.6.3-devel-ubuntu22.04
 
 # Accept build arguments for user ID and group ID
 ARG UID=1000
@@ -26,7 +26,11 @@ ARG GID=1000
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    CUDA_DOCKER_ARCH=all \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
 
 # Install system dependencies including CUDA development tools
 RUN apt-get update && \
@@ -43,7 +47,8 @@ RUN apt-get update && \
         cmake \
         ninja-build \
         pkg-config \
-        build-essential && \
+        build-essential \
+        software-properties-common && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with specified UID and GID
@@ -67,12 +72,20 @@ RUN git clone https://github.com/ggml-org/llama.cpp.git /opt/llama.cpp && \
     cmake -B build \
         -DGGML_CUDA=ON \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc && \
-    cmake --build build --config Release -j$(nproc)
+        -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+        -DLLAMA_CURL=OFF \
+        -DGGML_CUDA_FORCE_DMMV=ON \
+        -DCUDA_ARCHITECTURES="60;61;70;75;80;86;89;90" \
+        -DBUILD_SHARED_LIBS=ON \
+        -DLLAMA_BUILD_EXAMPLES=OFF \
+        -DLLAMA_BUILD_TESTS=OFF \
+        -DLLAMA_BUILD_SERVER=OFF && \
+    cmake --build build --config Release --target llama -j$(nproc)
 
 # Set environment variables for llama-cpp-python to use our custom build
 ENV LLAMA_CPP_LIB=/opt/llama.cpp/build/src/libllama.so
-ENV CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc"
+ENV CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DGGML_CUDA_FORCE_DMMV=ON"
+ENV FORCE_CMAKE=1
 ENV FORCE_CMAKE=1
 
 # Now build and install llama-cpp-python from source with our custom llama.cpp
