@@ -51,6 +51,11 @@ RUN apt-get update && \
         software-properties-common && \
     rm -rf /var/lib/apt/lists/*
 
+# Create symbolic link for libcuda.so.1 to resolve linking issues
+RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
+    echo "/usr/local/cuda/lib64/stubs" > /etc/ld.so.conf.d/cuda-stubs.conf && \
+    ldconfig
+
 # Create non-root user with specified UID and GID
 RUN groupadd -f -g ${GID} appuser && \
     useradd -o -r -u ${UID} -g ${GID} -d /srv -s /bin/bash appuser 2>/dev/null || \
@@ -69,6 +74,7 @@ RUN git clone https://github.com/ggml-org/llama.cpp.git /opt/llama.cpp && \
     cd /opt/llama.cpp && \
     git fetch origin pull/14029/head:pr-14029 && \
     git checkout pr-14029 && \
+    export LD_LIBRARY_PATH="/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH}" && \
     cmake -B build \
         -DGGML_CUDA=ON \
         -DCMAKE_BUILD_TYPE=Release \
@@ -79,17 +85,18 @@ RUN git clone https://github.com/ggml-org/llama.cpp.git /opt/llama.cpp && \
         -DBUILD_SHARED_LIBS=ON \
         -DLLAMA_BUILD_EXAMPLES=OFF \
         -DLLAMA_BUILD_TESTS=OFF \
-        -DLLAMA_BUILD_SERVER=OFF && \
+        -DLLAMA_BUILD_SERVER=OFF \
+        -DCMAKE_LIBRARY_PATH="/usr/local/cuda/lib64/stubs" && \
     cmake --build build --config Release --target llama -j$(nproc)
 
 # Set environment variables for llama-cpp-python to use our custom build
 ENV LLAMA_CPP_LIB=/opt/llama.cpp/build/src/libllama.so
-ENV CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DGGML_CUDA_FORCE_DMMV=ON"
-ENV FORCE_CMAKE=1
+ENV CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DGGML_CUDA_FORCE_DMMV=ON -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs"
 ENV FORCE_CMAKE=1
 
 # Now build and install llama-cpp-python from source with our custom llama.cpp
 RUN --mount=type=cache,target=/root/.cache/pip \
+    export LD_LIBRARY_PATH="/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH}" && \
     /opt/venv/bin/pip install llama-cpp-python --no-binary=llama-cpp-python
 
 # Create directories with proper permissions and fix venv ownership
